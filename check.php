@@ -1,39 +1,36 @@
 <?php
 include 'db.php';
 
-$key  = $_POST['key'] ?? '';
-$hwid = $_POST['hwid'] ?? '';
+$key = $_GET['key'] ?? '';
+$hwid = $_GET['hwid'] ?? '';
 
-$stmt = $conn->prepare("SELECT * FROM licenses WHERE license_key=?");
+$sql = "SELECT * FROM license_keys WHERE license_key = ?";
+$stmt = $conn->prepare($sql);
 $stmt->bind_param("s", $key);
 $stmt->execute();
-$res = $stmt->get_result();
+$result = $stmt->get_result();
 
-if(!$row = $res->fetch_assoc()){
-  die(json_encode(["status"=>"invalid"]));
-}
+if ($row = $result->fetch_assoc()) {
 
-// ❌ banned
-if($row['status'] !== 'active'){
-  die(json_encode(["status"=>"banned"]));
-}
+    // เช็ควันหมดอายุ
+    if (strtotime($row['expiry_date']) < time()) {
+        echo "EXPIRED";
+        exit;
+    }
 
-// ⏳ expire
-if(!empty($row['expire_at']) && strtotime($row['expire_at']) < time()){
-  die(json_encode(["status"=>"expired"]));
-}
+    // เช็ค HWID
+    if ($row['hwid'] == NULL) {
+        // bind ครั้งแรก
+        $update = $conn->prepare("UPDATE license_keys SET hwid=? WHERE license_key=?");
+        $update->bind_param("ss", $hwid, $key);
+        $update->execute();
+        echo "OK";
+    } else if ($row['hwid'] == $hwid) {
+        echo "OK";
+    } else {
+        echo "HWID_MISMATCH";
+    }
 
-// 🔗 bind ครั้งแรก
-if(empty($row['hwid'])){
-  $u = $conn->prepare("UPDATE licenses SET hwid=? WHERE license_key=?");
-  $u->bind_param("ss", $hwid, $key);
-  $u->execute();
-  die(json_encode(["status"=>"bind_ok"]));
-}
-
-// 🔒 check hwid
-if($row['hwid'] === $hwid){
-  echo json_encode(["status"=>"ok"]);
 } else {
-  echo json_encode(["status"=>"mismatch"]);
+    echo "INVALID";
 }
